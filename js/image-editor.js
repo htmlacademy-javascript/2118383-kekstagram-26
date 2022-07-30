@@ -18,12 +18,52 @@ class ImageEditor {
     this.imagePreview = document.querySelector('.img-upload__preview img');
     this.uploadCancelButton = document.querySelector('#upload-cancel');
     this.submitButton = document.querySelector('#upload-submit');
+    this.sliderElement = document.querySelector('.effect-level__slider');
+    this.sliderElementValue = document.querySelector('.effect-level__value');
     this.setOptionsToDefault();
+  }
+
+  // максимальный масштаб
+  static get MAX_SCALE() {
+    return 100;
+  }
+
+  // минимальный масштаб
+  static get MIN_SCALE() {
+    return 25;
+  }
+
+  // шаг изменения масштаба
+  static get STEP_SCALE() {
+    return 25;
+  }
+
+  // настройки слайдера для эффектов
+  static getNouisliderOptions(effectName) {
+    let result;
+    switch (effectName) {
+      case 'chrome':
+        result = {range: {min: 0, max: 1}, start: 1, step: 0.1, cssTemplate: 'grayscale(%s)'};
+        break;
+      case 'sepia':
+        result = {range: {min: 0, max: 1}, start: 1, step: 0.1, cssTemplate: 'sepia(%s)'};
+        break;
+      case 'marvin':
+        result = {range: {min: 0, max: 100}, start: 100, step: 1, cssTemplate: 'invert(%s%)'};
+        break;
+      case 'phobos':
+        result = {range: {min: 0, max: 3}, start: 3, step: 0.1, cssTemplate: 'blur(%spx)'};
+        break;
+      case 'heat':
+        result = {range: {min: 1, max: 3}, start: 3, step: 0.1, cssTemplate: 'brightness(%s)'};
+        break;
+    }
+    return result;
   }
 
   // сброс формы в исходное состояние
   setOptionsToDefault() {
-    this.setScale(100);
+    this.setScale(ImageEditor.MAX_SCALE);
     this.setEffect('none');
     this.form.reset();
   }
@@ -106,7 +146,7 @@ class ImageEditor {
     this.effectsList.removeEventListener('change', this.effectsChangeListenerRef);
     this.form.removeEventListener('submit', this.formSubmitListenerRef);
     this.inputHashtags.removeEventListener('input', this.inputHashtagsInputListenerRef);
-    this.textareaDescription.removeEventListener('input', this.textareaDescriptionInputListenerRef);
+    this.textareaDescription.removeEventListener('input', this.inputHashtagsInputListenerRef);
   }
 
   // загрузка изображения в редактор
@@ -121,32 +161,31 @@ class ImageEditor {
   // открытие редактора
   show() {
     const imageEditor = this;
-    this.uploadCancelButton.addEventListener('click', this.buttonCloseListenerRef = () =>
-      imageEditor.buttonCloseListener());
-    this.buttonScaleUp.addEventListener('click', this.buttonScaleUpListenerRef = () =>
-      imageEditor.buttonScaleUpDownListener(25));
-    this.buttonScaleDown.addEventListener('click', this.buttonScaleDownListenerRef = () =>
-      imageEditor.buttonScaleUpDownListener(-25));
-    document.addEventListener('keydown', this.keydownListenerRef = (evt) =>
-      imageEditor.keydownListener(evt));
-    this.effectsList.addEventListener('change', this.effectsChangeListenerRef = (evt) =>
-      imageEditor.effectsChangeListener(evt));
-    this.form.addEventListener('submit', this.formSubmitListenerRef = (evt) =>
-      imageEditor.formSubmitListener(evt));
-    this.inputHashtags.addEventListener('input', this.inputHashtagsInputListenerRef = (evt) =>
-      imageEditor.inputCheckListener(evt));
-    this.textareaDescription.addEventListener('input', this.textareaDescriptionRef = (evt) =>
-      imageEditor.inputCheckListener(evt));
+    this.buttonCloseListenerRef = () => imageEditor.buttonCloseListener();
+    this.uploadCancelButton.addEventListener('click', this.buttonCloseListenerRef);
+    this.buttonScaleUpListenerRef = () => imageEditor.buttonScaleUpDownListener(ImageEditor.STEP_SCALE);
+    this.buttonScaleUp.addEventListener('click', this.buttonScaleUpListenerRef);
+    this.buttonScaleDownListenerRef = () => imageEditor.buttonScaleUpDownListener(-ImageEditor.STEP_SCALE);
+    this.buttonScaleDown.addEventListener('click', this.buttonScaleDownListenerRef);
+    this.keydownListenerRef = (evt) => imageEditor.keydownListener(evt);
+    document.addEventListener('keydown', this.keydownListenerRef);
+    this.effectsChangeListenerRef = (evt) => imageEditor.effectsChangeListener(evt);
+    this.effectsList.addEventListener('change', this.effectsChangeListenerRef);
+    this.formSubmitListenerRef = (evt) => imageEditor.formSubmitListener(evt);
+    this.form.addEventListener('submit', this.formSubmitListenerRef);
+    this.inputHashtagsInputListenerRef = (evt) => imageEditor.inputCheckListener(evt);
+    this.inputHashtags.addEventListener('input', this.inputHashtagsInputListenerRef);
+    this.textareaDescription.addEventListener('input', this.inputHashtagsInputListenerRef);
     imageEditor.uploadOverlay.classList.remove('hidden');
     document.body.classList.add('modal-open');
   }
 
   // установка масштаба изображения
   setScale(scale) {
-    if (scale < 0) {
-      this.scale = 0;
-    } else if (scale > 100) {
-      this.scale = 100;
+    if (scale < ImageEditor.MIN_SCALE) {
+      this.scale = ImageEditor.MIN_SCALE;
+    } else if (scale > ImageEditor.MAX_SCALE) {
+      this.scale = ImageEditor.MAX_SCALE;
     } else {
       this.scale = scale;
     }
@@ -154,11 +193,47 @@ class ImageEditor {
     this.imagePreview.style.transform = `scale(${this.scale/100})`;
   }
 
+  // обновление слайдера
+  updateNouislider(effectName) {
+    const options = ImageEditor.getNouisliderOptions(effectName);
+    this.cssTemplate = options.cssTemplate;
+    if (this.sliderElement.noUiSlider === undefined) {
+      options.connect = 'lower';
+      options.format = {
+        to: (value) => Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1),
+        from: (value) => parseFloat(value)
+      };
+      noUiSlider.create(this.sliderElement, options);
+      const imageEditor = this;
+      this.sliderElement.noUiSlider.on('update', () => {
+        imageEditor.sliderElementValue.value = imageEditor.sliderElement.noUiSlider.get();
+        imageEditor.imagePreview.style.filter = imageEditor.cssTemplate.replace('%s',
+          imageEditor.sliderElementValue.value);
+      });
+      this.sliderElement.parentNode.classList.remove('hidden');
+    } else {
+      this.sliderElement.noUiSlider.updateOptions(options);
+    }
+  }
+
+  // скрытие слайдера
+  destroyNouislider() {
+    if (this.sliderElement.noUiSlider !== undefined) {
+      this.sliderElement.noUiSlider.destroy();
+      this.sliderElement.parentNode.classList.add('hidden');
+      this.imagePreview.style.filter = '';
+      this.sliderElementValue.value = '';
+    }
+  }
+
   // установка эффекта на изображение
   setEffect(effectName) {
     this.imagePreview.setAttribute('class', '');
     if (effectName !== 'none') {
       this.imagePreview.classList.add(`effects__preview--${effectName}`);
+      this.updateNouislider(effectName);
+    } else {
+      this.destroyNouislider();
     }
   }
 }
